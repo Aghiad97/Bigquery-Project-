@@ -1,4 +1,5 @@
-BigQuery SQL: --conversion rate: comparison between 2022 and 2023:-- 
+--BigQuery SQL:--
+--conversion rate: comparison between 2022 and 2023:-- 
 With Queryresults AS (
   SELECT
     (SELECT COUNT( user_id) FROM bigquery-public-data.thelook_ecommerce.events WHERE event_type = 'purchase' AND DATE(created_at) BETWEEN '2022-01-01' AND '2022-12-31') AS PurchaseCount2022,
