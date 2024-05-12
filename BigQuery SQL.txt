@@ -1,0 +1,107 @@
+BigQuery SQL: --conversion rate: comparison between 2022 and 2023:-- 
+With Queryresults AS (
+  SELECT
+    (SELECT COUNT( user_id) FROM bigquery-public-data.thelook_ecommerce.events WHERE event_type = 'purchase' AND DATE(created_at) BETWEEN '2022-01-01' AND '2022-12-31') AS PurchaseCount2022,
+    (SELECT COUNT( user_id) FROM bigquery-public-data.thelook_ecommerce.events WHERE event_type = 'cart' AND DATE(created_at) BETWEEN '2022-01-01' AND '2022-12-31') AS CartCount2022,
+    (SELECT COUNT( user_id) FROM bigquery-public-data.thelook_ecommerce.events WHERE event_type = 'purchase' AND DATE(created_at) BETWEEN '2023-01-01' AND '2023-12-31') AS PurchaseCount2023,
+    (SELECT COUNT( user_id) FROM bigquery-public-data.thelook_ecommerce.events WHERE event_type = 'cart' AND DATE(created_at) BETWEEN '2023-01-01' AND '2023-12-31') AS CartCount2023
+)
+SELECT
+  '2022' AS year,
+  PurchaseCount2022 AS purchase_count,
+  CartCount2022 AS cart_count,
+  ROUND((PurchaseCount2022 / CartCount2022) * 100,3) AS conversion_rate
+FROM QueryResults
+
+UNION ALL
+
+SELECT
+  '2023' AS year,
+  PurchaseCount2023 AS purchase_count,
+  CartCount2023 AS cart_count,
+  ROUND((PurchaseCount2023 / CartCount2023) * 100,3) AS conversion_rate
+FROM QueryResults;
+____________________________________________________________________________________________________________________________________________________________________
+--Average order value:--
+WITH RevenueOrders2022 AS (
+  SELECT 
+    ROUND(SUM(oi.sale_price),5) AS TotalRevenue, 
+    COUNT(DISTINCT oi.order_id) AS TotalOrders
+  FROM bigquery-public-data.thelook_ecommerce.order_items oi
+  JOIN bigquery-public-data.thelook_ecommerce.orders o ON oi.order_id = o.order_id
+  WHERE EXTRACT(YEAR FROM o.created_at) = 2022
+    AND o.status NOT IN ('Cancelled', 'Returned')
+),
+RevenueOrders2023 AS (
+  SELECT 
+    ROUND(SUM(oi.sale_price),5) AS TotalRevenue, 
+    COUNT(DISTINCT oi.order_id) AS TotalOrders
+  FROM bigquery-public-data.thelook_ecommerce.order_items oi
+  JOIN bigquery-public-data.thelook_ecommerce.orders o ON oi.order_id = o.order_id
+  WHERE EXTRACT(YEAR FROM o.created_at) = 2023
+    AND o.status NOT IN ('Cancelled', 'Returned')
+),
+AOV2022 AS (
+  SELECT 
+    2022 AS Year,
+    TotalRevenue,
+    TotalOrders,
+    CASE 
+      WHEN TotalOrders = 0 THEN 0
+      ELSE ROUND(TotalRevenue / TotalOrders,3) 
+    END AS AOV
+  FROM RevenueOrders2022
+),
+AOV2023 AS (
+  SELECT 
+    2023 AS Year,
+    TotalRevenue,
+    TotalOrders,
+    CASE 
+      WHEN TotalOrders = 0 THEN 0
+      ELSE ROUND(TotalRevenue / TotalOrders,3) 
+    END AS AOV
+  FROM RevenueOrders2023
+)
+SELECT * FROM AOV2022
+UNION ALL
+SELECT * FROM AOV2023;
+__________________________________________________________________________________________________________________________________________________________________________
+--traffic source efficeincy:--
+WITH PurchaseEvents AS (
+    SELECT
+        traffic_source,
+        EXTRACT(YEAR FROM created_at) AS year,
+        COUNT(*) AS purchase_event_count
+    FROM `bigquery-public-data.thelook_ecommerce.events`
+    WHERE event_type = 'purchase'
+      AND EXTRACT(YEAR FROM created_at) IN (2022, 2023)
+    GROUP BY traffic_source, year
+),
+TotalEvents AS (
+    SELECT
+        traffic_source,
+        EXTRACT(YEAR FROM created_at) AS year,
+        COUNT(*) AS total_event_count
+    FROM `bigquery-public-data.thelook_ecommerce.events`
+    WHERE EXTRACT(YEAR FROM created_at) IN (2022, 2023)
+    GROUP BY traffic_source, year
+    ),
+TrafficSourceEfficiency AS (
+    SELECT
+        TE.traffic_source,
+        TE.year,
+        PE.purchase_event_count,
+        TE.total_event_count,
+        ROUND((PE.purchase_event_count * 100.0) / TE.total_event_count,3) AS efficiency
+    FROM TotalEvents TE
+    JOIN PurchaseEvents PE ON TE.traffic_source = PE.traffic_source AND TE.year = PE.year
+)
+SELECT
+    year,
+    traffic_source,
+    purchase_event_count,
+    total_event_count,
+    efficiency
+FROM TrafficSourceEfficiency
+ORDER BY year DESC, efficiency DESC;
